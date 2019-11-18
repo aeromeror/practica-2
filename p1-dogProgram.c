@@ -310,8 +310,8 @@ void borrarReg(){
 	    exit(-1);
     }
 
-    int id,idAnt;
-    int idDesp = -1;
+    int id,idAnt,idDesp;
+    id = -1;
     getReg(lastestId[hashF],tmp);
     while(1){//encontrar el elemento con nombre igual al ultimo que tiene posicion > a el registerId mas cercana 
 	

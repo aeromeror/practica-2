@@ -325,6 +325,237 @@ void buscarReg(){
     SendConfirmation(-1);
 }
 
+void borrarReg(){
+    int reg,r;
+	//pasar la cantidad de registros actuales
+	int total=lastPos();
+	r = send(clientfd,&total,sizeof(total),0);
+    if( r != sizeof(total))
+    {
+        perror("Error al enviar cantidad de registros");
+        exit(-1);
+    }
+
+    r = recv(clientfd,&reg,sizeof(reg),0);
+    if( r != sizeof(reg))
+    {
+        perror("Error al recibir el registro a eliminar");
+        exit(-1);
+    }
+		
+	struct dogType * mascotaFinal;
+	mascotaFinal = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
+	if( mascotaFinal == NULL )
+	{
+		perror("error en el malloc de la mascota");
+		exit( -1 );
+	}
+	getReg( total-1, mascotaFinal );
+	printf("llega 1");
+	struct dogType * mascotaDelete;
+	mascotaDelete = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
+	if( mascotaDelete == NULL )
+	{
+		perror("error en el malloc de la mascota");
+		exit( -1 );
+	}
+	getReg( reg, mascotaDelete ); //aca recibe reg
+	printf("llega 2");
+	// a partir de este punto comienza lo feo	
+	int hashF, hashD;
+	hashF = hash( mascotaFinal -> nombre );
+	hashD = hash( mascotaDelete -> nombre );
+
+	struct dogType * tmp;
+	tmp = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
+	if( tmp  == NULL )
+	{
+		perror("error en el malloc de la mascota");
+		exit( -1 );
+	}
+	
+	int id, idAnt,idDesp;
+	id = -1;
+	getReg( lastestId[hashF], tmp );  //aca es lastestID
+	printf("llega 3");
+	while( 1 )
+	{
+		idAnt = tmp -> idPrev;
+		if( tmp -> idPrev <= reg ) //aca es reg
+			break;
+		idDesp = idAnt;
+		getReg( tmp -> idPrev, tmp );
+		printf("llega 4");
+	}	
+	
+	// id guarda el indice del primer elemento que pertenece a la lista de HashFinal y que se encuentra despues del elemento a ser borrado
+	// si este elemento no existe se id vale -1 ( cuando la posicion borrada es la ultima )
+	// para este elemento su prevId se modificara ya que antes la lista era de la forma:  ..... idAnt, id, ..... lastID[hashF]
+	// ahora la lista pasa a ser de la forma: ..... id Prev, ultimaMascota(posicion eliminada), id, ......
+
+	if( id != -1 )	
+	{
+		getReg( id, tmp );
+		printf("llega 5");
+		tmp -> idPrev = reg; // ahora tmp guarda la data completa de dicho elemento      //aca es reg
+	}
+
+	// el head de la lista HashFinal, se re direcciona al que iba antes del ultimo elemento       
+	lastestId[hashF] = mascotaFinal -> idPrev;                                                        
+
+	//ahora posicionando a la mascota final en la posicion eliminada(registerId) se apunta como elemento anterior a idPrev 
+	mascotaFinal -> idPrev = idAnt;	
+
+	struct dogType * tmp2;
+	tmp2 = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
+	if( tmp2  == NULL )
+	{
+		perror("error en el malloc de la mascota");
+		exit( -1 );
+	}
+	
+	int idAnt2;
+    int idDesp2 = -1;
+
+	if( hashF != hashD )
+	{	
+		getReg( lastestId[hashD], tmp2 );
+		printf("llega 6");                
+		while( 1 )
+		{
+			if( tmp2 -> idPrev <= reg )          //aca es reg
+				break;
+			idDesp2 = tmp2 -> idPrev;
+			getReg(tmp2->idPrev,tmp2);
+			printf("llega 7");
+		}	
+		
+		// id2 guarda el indice del primer elemento que apunta al elemento a ser borrado o -1 si el elemento borrado es el ultimo de su lista
+		// la lista hashDelete era de la forma: ......( mascotaDelete -> prevId ), registerId, id2, .....
+		// ahora es de la forma: ...... ( mascotaDelete -> prevId ), id2, .....
+		
+				
+		if(idDesp2 != -1){
+		    getReg( idDesp2, tmp2 );
+		    tmp2->idPrev = mascotaDelete->idPrev; //ahora tmp guarda la data completa del elemento idDesp2
+	    }else{
+
+		//el elemento a ser borrado es el ultimo de su lista, por tanto
+		    lastestId[hashD] = mascotaDelete->idPrev;
+    	}   
+    }else{
+	    mascotaFinal -> idPrev = mascotaDelete -> idPrev;
+    }
+
+		
+	int status;
+	
+	FILE * dbTmp;
+	int check;
+	dbTmp = fopen("dbTmp.dat", "a+");
+	
+	int i, tot;
+	i = 0, tot = lastPos() - 1;
+
+	for( i = 0; i < tot; ++ i )
+	{
+		if( i == id ){
+			check = fwrite ( tmp, sizeof( struct dogType ), 1, dbTmp );	
+			if (check==0)
+			{
+				perror("error escritura dbTmp");
+				exit(-1);
+			}
+		} 
+		else if( i == idDesp2 ){
+			check = fwrite ( tmp2, sizeof( struct dogType ), 1, dbTmp );
+			if (check==0)
+			{
+				perror("error escritura dbTmp");
+				exit(-1);
+			}	
+		}
+		else if( i == reg ){   //aca es reg
+			check = fwrite ( mascotaFinal, sizeof( struct dogType ), 1, dbTmp );
+			if (check==0)
+			{
+				perror("error escritura dbTmp");
+				exit(-1);
+			}
+		} 
+		else
+		{
+			getReg( i, mascotaDelete );
+			check  = fwrite( mascotaDelete, sizeof ( struct dogType ), 1, dbTmp ); 
+			if (check==0)
+			{
+				perror("error escritura dbTmp");
+				exit(-1);
+			}
+		}
+	}
+	fclose(dbTmp); 
+
+	status = remove( "dataDogs.dat" );	
+	if( status != 0 )
+	{
+		perror( "Error eliminando la base de datos" );
+		exit( -1 );
+	}
+
+	status = rename( "dbTmp.dat", "dataDogs.dat" );
+	if( status != 0 )
+	{
+		perror( "Error en el renombramiento de la base de datos" );
+		exit( -1 );
+	}
+
+	//Re escritura de historias clinicas
+	//NO SE SI BORRAR LA HISTORIA CLINICA ESTE BIEN ASDADASDVDFBTRBMDLKFMVDJFKVNDJFKVNDFJVKNDFVJKNFDVJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJVSDKJVNSDVKSJD
+
+	// Primero se elimina la historia clinica de la mascota registerId
+	unsigned char hcNameDelete [22], hcNameLast [22];
+	memset( hcNameDelete,0, sizeof (hcNameDelete));
+	memset( hcNameLast, 0, sizeof (hcNameLast) );
+
+	sprintf(hcNameDelete, "%d", reg + 1);  //aca es reg
+	strcat(hcNameDelete,"hc");
+	strcat(hcNameDelete,".txt");
+
+		
+	sprintf(hcNameLast, "%d", lastPos() + 1 );
+	strcat(hcNameLast,"hc");
+	strcat(hcNameLast,".txt");
+
+	if( access( hcNameDelete, F_OK ) != -1 ) { 
+		status = remove( hcNameDelete );	
+		if( status != 0 )
+		{
+			perror( "Error eliminando historia clinica" );
+			exit( -1 );
+
+		}
+	}	
+
+	//Ahora se renombra la historia clinica del ultimo	
+	
+	if( access( hcNameLast, F_OK ) != -1 ) {
+		status = rename( hcNameLast, hcNameDelete );
+		if( status != 0 )
+		{
+			perror( "Error en el renombramiento de la historio clinica" );
+			exit( -1 );
+		}
+		
+	}
+
+	free(mascotaFinal);
+	free(mascotaDelete);
+	free(tmp);
+	free(tmp2);
+
+	SendConfirmation(1); 
+}
 
 void run(){
     int doing=1;
@@ -348,7 +579,7 @@ void run(){
                 break;
             case 3:
                 printf("borrar");
-                //borrarReg();
+                borrarReg();
                 break;
             case 4:
                 printf("buscar");

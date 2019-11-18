@@ -201,6 +201,39 @@ void buscarReg(){
 	} 
 	free(perro);
 }
+void borrarReg(){
+    //system("clear");
+    int reg,flag,r,total;
+    r = recv(clientfd,&total,sizeof(total),0);
+    if(r != sizeof(total))
+    {   
+        perror("Error al recibir la cantidad total de registros");
+        exit(-1);
+    }
+    printf("numero total de registros: %i\n",total);
+    printf("Ingrese el id de la mascota que desea eliminar:\n");
+    scanf("%d",&reg);
+    reg--;//indexacion desde 0
+    r = send(clientfd,&reg,sizeof(reg),0);
+    if(r != sizeof(reg))
+    {   
+        perror("Error al enviar el registro a eliminar");
+        exit(-1);
+    }
+    r = recv(clientfd,&flag,sizeof(flag),0);
+    if(r != sizeof(flag)){
+        perror("Error al recibir la confirmación de eliminación");
+        exit(-1);
+    }
+    if(flag == 1){
+        printf("\nLa mascota ha sido eliminada, ingrese un caracter continuar");
+	    char tecla;
+	    scanf("%s",&tecla);	
+    }else{
+        perror("Error al eliminar la mascota");
+        exit(-1);
+    }
+}
 
 void run(){
     while(1)
@@ -238,8 +271,8 @@ void run(){
                     perror("error send de 1");
                     exit(-1);
                 }
-            //borrarReg();
-            break;
+                borrarReg();
+                break;
         case 4:
             check=send(clientfd,&opcion,sizeof(opcion),0);
                 if(check==-1){
