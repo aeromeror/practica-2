@@ -7,7 +7,9 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
-#include <arpa/inet.h>
+#include <arpa/inet.h> 
+#include <semaphore.h> 
+#include <fcntl.h>
 
 #define HASH_SIZE 10007 //hash de al menos 1000 entradas
 #define NAME_LEN 32
@@ -26,6 +28,7 @@ pthread_t idThreat[MAX_CLIENTS];
 FILE* principal;
 int* lastestId;
 int arg[MAX_CLIENTS];
+sem_t * semaforo;
 
 
 struct dogType{
@@ -121,21 +124,25 @@ void getReg(int reg, struct dogType* perro){
 
 void SendMascota( struct dogType * mascota,int idc )
 {
+	sem_wait(semaforo);
 	int r = send(clientfd[idc], mascota, sizeof(struct dogType), 0);
 	if( r != sizeof(struct dogType) )
 	{
 		perror("Error enviando mascota el cliente");
 		exit(-1);
 	}
+	sem_post(semaforo);
 }
 void SendConfirmation(int confirmation ,int idc) 
-{
+{	
+	sem_wait(semaforo);
 	int r = send(clientfd[idc], &confirmation, sizeof(confirmation), 0);
 	if( r != sizeof(confirmation) )
 	{
 		perror("Error enviando confirmacion al cliente");
 		exit(-1);
 	}
+	sem_post(semaforo);
 }
 
 void addLog(char * operation,int clientIp, char * type){
@@ -218,34 +225,41 @@ void verReg(int idc){
         exit(-1);
     }
     int tot=lastPos();
+	sem_wait(semaforo);
     int r=send(clientfd[idc],&tot,sizeof(int),0);
     if( r != sizeof(tot) )
 	{
 		perror("Error enviando numreg");
 		exit(-1);
 	}
+	sem_post(semaforo);
     int reg;
+	sem_wait(semaforo);
     r = recv(clientfd[idc],&reg, sizeof(int),0);
 	if( r != sizeof(reg) )
 	{
 		perror("Error reciviendo numero de registro");
 		exit(-1);
 	}
-    
+    sem_post(semaforo);
     int val=reg;
+	sem_wait(semaforo);
     r=send(clientfd[idc],&val,sizeof(int),0);
     if( r != sizeof(val) )
 	{
 		perror("Error enviando confirmacion al cliente");
 		exit(-1);
 	}
+	sem_post(semaforo);
     val--;
     getReg(val,perro);
+	sem_wait(semaforo);
     r=send(clientfd[idc],perro,sizeof(struct dogType),0);
     if(r==-1){
         perror("error send del perro desde server");
         exit(-1);
     }
+	sem_post(semaforo);
 
 
 //---------------------------------------------------------------
@@ -316,12 +330,14 @@ void verReg(int idc){
 	    fclose(hc);
     }
     int flag;
+	sem_wait(semaforo);
     r = recv(clientfd[idc],&flag, sizeof(int),0);
 	if( r != sizeof(flag) )
 	{
 		perror("Error reciviendo numero de registro");
 		exit(-1);
 	}
+	sem_post(semaforo);
     if(flag==1){
         r=send(clientfd[idc],hcFile,sizeof(hcFile),0);
         if( r != sizeof(hcFile) )
@@ -332,7 +348,6 @@ void verReg(int idc){
     }
     //presionar cualquier tecla para continuar
     free(perro);
-    
 }
 
 
@@ -344,25 +359,27 @@ void ingresarReg(int idc){
 		perror("error en el malloc de la mascota");
 		exit( -1 );
 	}
+	sem_wait(semaforo);
 	int r = recv(clientfd[idc], mascota, sizeof(struct dogType),0);
 	if( r != sizeof(struct dogType) )
 	{
 		perror("Error reciviendo mascota del cliente");
 		exit(-1);
 	}
-    
+    sem_post(semaforo);
     int key = hash(mascota->nombre);
     mascota->idPrev = lastestId[key];
     lastestId[key] = lastPos();
     save(mascota);
     int val=1;
+	sem_wait(semaforo);
     r=send(clientfd[idc],&val,sizeof(int),0);
     if( r != sizeof(val) )
 	{
 		perror("Error enviando confirmacion al cliente");
 		exit(-1);
 	}
-
+	sem_post(semaforo);
 }
 
 void buscarReg(int idc){
@@ -375,12 +392,14 @@ void buscarReg(int idc){
     }
     char nombre[NAME_LEN];
     memset(nombre,0,sizeof(nombre));
+	sem_wait(semaforo);
     r = recv(clientfd[idc],nombre,NAME_LEN,0);
     if( r != NAME_LEN )
 	{
 		perror("Error reciviendo mascota del cliente");
 		exit(-1);
 	}
+	sem_post(semaforo);
     int key,currId, i, equal, a, b;
     key = hash(nombre);
     currId =lastestId[key];
@@ -415,20 +434,22 @@ void borrarReg(int idc){
     int reg,r;
 	//pasar la cantidad de registros actuales
 	int total=lastPos();
+	sem_wait(semaforo);
 	r = send(clientfd[idc],&total,sizeof(total),0);
     if( r != sizeof(total))
     {
         perror("Error al enviar cantidad de registros");
         exit(-1);
     }
-
+	sem_post(semaforo);
+	sem_wait(semaforo);
     r = recv(clientfd[idc],&reg,sizeof(reg),0);
     if( r != sizeof(reg))
     {
         perror("Error al recibir el registro a eliminar");
         exit(-1);
     }
-		
+	sem_post(semaforo);
 	struct dogType * mascotaFinal;
 	mascotaFinal = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
 	if( mascotaFinal == NULL )
@@ -703,15 +724,13 @@ void * run(void * ap){
 
 
 int main(){
-
+	semaforo = sem_open("semaforo_name", O_CREAT, 0700, MAX_CLIENTS);
     FILE* principal;
 	principal=fopen("dataDogs.dat", "r+");//abrir el archivo generado
 	if(principal == NULL){
 		perror("error abriendo archivo dataDogs");
 		exit(-1);
 	}
-
-    
 	lastestId=malloc(HASH_SIZE*sizeof(int));
     if(lastestId == NULL){
         perror("error en el malloc de la hash");
@@ -754,9 +773,9 @@ int main(){
 	for( int i = 0; i < MAX_CLIENTS; ++ i ){
 		arg[i] = i;
 	}
+	int idx=0;
 	while (1)
 	{
-		int idx=0;
 		socklen_t tamaClient = 0;
 		clientfd[idx] = accept(serverfd,(struct sockaddr *)&client[idx],&tamaClient);
     	if(clientfd[idx]==-1){
@@ -767,8 +786,9 @@ int main(){
 			break;
 		}
 		++idx;
-	}
-		
+	}	
+	sem_close(semaforo);
+    sem_unlink("semaforo_name");
     close(serverfd);
     return 0;
 }
