@@ -29,6 +29,8 @@ FILE* principal;
 int* lastestId;
 int arg[MAX_CLIENTS];
 sem_t * semaforo;
+char operation[LOG_SIZE];
+char type[LOG_SIZE];
 
 
 struct dogType{
@@ -346,6 +348,11 @@ void verReg(int idc){
 		    exit(-1);
 	    }
     }
+	memset(operation,0,LOG_SIZE*sizeof(char));
+	strcpy(operation,"lectura");
+	memset(type,0,LOG_SIZE*sizeof(char));
+	sprintf(type,"%d",reg);
+	addLog(operation,idc,type);
     //presionar cualquier tecla para continuar
     free(perro);
 }
@@ -380,6 +387,11 @@ void ingresarReg(int idc){
 		exit(-1);
 	}
 	sem_post(semaforo);
+	memset(operation,0,LOG_SIZE*sizeof(char));
+	strcpy(operation,"inserción");
+	memset(type,0,LOG_SIZE*sizeof(char));
+	strcpy(type,mascota->nombre);
+	addLog(operation,idc,type);
 }
 
 void buscarReg(int idc){
@@ -428,6 +440,11 @@ void buscarReg(int idc){
     }
     free(perro);
     SendConfirmation(-1,idc);
+	memset(operation,0,LOG_SIZE*sizeof(char));
+	strcpy(operation,"búsqueda");
+	memset(type,0,LOG_SIZE*sizeof(char));
+	strcpy(type,nombre);
+	addLog(operation,idc,type);
 }
 
 void borrarReg(int idc){
@@ -458,7 +475,6 @@ void borrarReg(int idc){
 		exit( -1 );
 	}
 	getReg( total-1, mascotaFinal );
-	printf("llega 1");
 	struct dogType * mascotaDelete;
 	mascotaDelete = ( struct  dogType *) malloc( sizeof ( struct dogType ) );	
 	if( mascotaDelete == NULL )
@@ -467,7 +483,6 @@ void borrarReg(int idc){
 		exit( -1 );
 	}
 	getReg( reg, mascotaDelete ); //aca recibe reg
-	printf("llega 2");
 	// a partir de este punto comienza lo feo	
 	int hashF, hashD;
 	hashF = hash( mascotaFinal -> nombre );
@@ -484,7 +499,6 @@ void borrarReg(int idc){
 	int id, idAnt,idDesp;
 	id = -1;
 	getReg( lastestId[hashF], tmp );  //aca es lastestID
-	printf("llega 3");
 	while( 1 )
 	{
 		idAnt = tmp -> idPrev;
@@ -492,7 +506,6 @@ void borrarReg(int idc){
 			break;
 		idDesp = idAnt;
 		getReg( tmp -> idPrev, tmp );
-		printf("llega 4");
 	}	
 	
 	// id guarda el indice del primer elemento que pertenece a la lista de HashFinal y que se encuentra despues del elemento a ser borrado
@@ -503,7 +516,6 @@ void borrarReg(int idc){
 	if( id != -1 )	
 	{
 		getReg( id, tmp );
-		printf("llega 5");
 		tmp -> idPrev = reg; // ahora tmp guarda la data completa de dicho elemento      //aca es reg
 	}
 
@@ -526,15 +538,13 @@ void borrarReg(int idc){
 
 	if( hashF != hashD )
 	{	
-		getReg( lastestId[hashD], tmp2 );
-		printf("llega 6");                
+		getReg( lastestId[hashD], tmp2 );                
 		while( 1 )
 		{
 			if( tmp2 -> idPrev <= reg )          //aca es reg
 				break;
 			idDesp2 = tmp2 -> idPrev;
 			getReg(tmp2->idPrev,tmp2);
-			printf("llega 7");
 		}	
 		
 		// id2 guarda el indice del primer elemento que apunta al elemento a ser borrado o -1 si el elemento borrado es el ultimo de su lista
@@ -662,6 +672,12 @@ void borrarReg(int idc){
 	free(tmp2);
 
 	SendConfirmation(1,idc); 
+
+	memset(operation,0,LOG_SIZE*sizeof(char));
+	strcpy(operation,"borrar");
+	memset(type,0,LOG_SIZE*sizeof(char));
+	sprintf(type,"%d",reg);
+	addLog(operation,idc,type);
 }
 
 void * run(void * ap){
