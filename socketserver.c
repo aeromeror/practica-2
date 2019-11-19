@@ -16,12 +16,17 @@
 #define PORT 3535
 #define BACKLOG 2
 #define MOD 256
+#define LOG_SIZE 32
+#define MAX_CLIENTS 32
 
 struct in_addr ipServer;
-int clientfd;
-
+struct sockaddr_in server,client[MAX_CLIENTS];
+int clientfd[MAX_CLIENTS];
+pthread_t idThreat[MAX_CLIENTS];
 FILE* principal;
 int* lastestId;
+int arg[MAX_CLIENTS];
+
 
 struct dogType{
     char nombre[NAME_LEN];
@@ -33,6 +38,15 @@ struct dogType{
     char sexo;
     int idPrev;
 };
+
+struct logRegister{
+	char date[LOG_SIZE];
+	char client[LOG_SIZE];
+	char operation[LOG_SIZE];
+	char type[LOG_SIZE];
+};
+
+
 
 int hash(unsigned char *str){
     int hash, base, i, auxC;
@@ -105,18 +119,18 @@ void getReg(int reg, struct dogType* perro){
 	fclose(aux);
 }
 
-void SendMascota( struct dogType * mascota )
+void SendMascota( struct dogType * mascota,int idc )
 {
-	int r = send(clientfd, mascota, sizeof(struct dogType), 0);
+	int r = send(clientfd[idc], mascota, sizeof(struct dogType), 0);
 	if( r != sizeof(struct dogType) )
 	{
 		perror("Error enviando mascota el cliente");
 		exit(-1);
 	}
 }
-void SendConfirmation(int confirmation ) 
+void SendConfirmation(int confirmation ,int idc) 
 {
-	int r = send(clientfd, &confirmation, sizeof(confirmation), 0);
+	int r = send(clientfd[idc], &confirmation, sizeof(confirmation), 0);
 	if( r != sizeof(confirmation) )
 	{
 		perror("Error enviando confirmacion al cliente");
@@ -124,7 +138,79 @@ void SendConfirmation(int confirmation )
 	}
 }
 
-void verReg(){
+void addLog(char * operation,int clientIp, char * type){
+	struct logRegister * log;
+    log = (struct logRegister*)malloc (sizeof(struct logRegister));
+    if(log == NULL){
+            perror("error en el malloc del log");
+            exit( -1 );
+    }
+
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+
+
+   	char actualTime [LOG_SIZE];        
+	memset( actualTime, 0, LOG_SIZE * sizeof(char));
+    char times [LOG_SIZE];
+    memset(times, 0, LOG_SIZE * sizeof(char));
+
+    strcat(actualTime, "|");
+    sprintf(times, "%d", tm.tm_year + 1900);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+    sprintf(times, "%d",tm.tm_mon + 1);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+    sprintf(times, "%d",tm.tm_mday);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+    sprintf(times, "%d",tm.tm_hour);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+    sprintf(times, "%d",tm.tm_min);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+    sprintf(times, "%d",tm.tm_sec);
+    strcat(actualTime, times);
+    strcat(actualTime, "|");
+	
+	memset(log->date, 0, LOG_SIZE);
+    strcpy(log->date, actualTime);
+
+
+    char ipAddr[INET_ADDRSTRLEN];
+	inet_ntop( AF_INET, &(client[clientIp].sin_addr), ipAddr, INET_ADDRSTRLEN);
+        
+	memset(log->client, 0, LOG_SIZE);	
+
+	strcpy(log->client, ipAddr);
+
+	memset(log->operation,0,LOG_SIZE);
+	memset(log->type, 0, LOG_SIZE);
+
+        strcpy(log->operation, operation);
+        strcpy(log->type, type);
+
+        FILE * logFile = fopen("dataDogs.log","a+");
+        if( logFile == NULL ){
+		perror("error abriendo archivo log");
+		exit( -1 );
+	}
+
+	int w = fwrite(log,sizeof(struct logRegister),1,logFile);	
+	if (w==0){
+		perror("error escritura logData");
+		exit(-1);
+	}
+	fclose(logFile);
+	free(log);
+
+}
+
+
+
+void verReg(int idc){
     struct dogType* perro;//creación del perro a ver
     perro = (struct dogType*)malloc(sizeof(struct dogType));
     if(perro == NULL){
@@ -132,14 +218,14 @@ void verReg(){
         exit(-1);
     }
     int tot=lastPos();
-    int r=send(clientfd,&tot,sizeof(int),0);
+    int r=send(clientfd[idc],&tot,sizeof(int),0);
     if( r != sizeof(tot) )
 	{
 		perror("Error enviando numreg");
 		exit(-1);
 	}
     int reg;
-    r = recv(clientfd,&reg, sizeof(int),0);
+    r = recv(clientfd[idc],&reg, sizeof(int),0);
 	if( r != sizeof(reg) )
 	{
 		perror("Error reciviendo numero de registro");
@@ -147,7 +233,7 @@ void verReg(){
 	}
     
     int val=reg;
-    r=send(clientfd,&val,sizeof(int),0);
+    r=send(clientfd[idc],&val,sizeof(int),0);
     if( r != sizeof(val) )
 	{
 		perror("Error enviando confirmacion al cliente");
@@ -155,7 +241,7 @@ void verReg(){
 	}
     val--;
     getReg(val,perro);
-    r=send(clientfd,perro,sizeof(struct dogType),0);
+    r=send(clientfd[idc],perro,sizeof(struct dogType),0);
     if(r==-1){
         perror("error send del perro desde server");
         exit(-1);
@@ -230,14 +316,14 @@ void verReg(){
 	    fclose(hc);
     }
     int flag;
-    r = recv(clientfd,&flag, sizeof(int),0);
+    r = recv(clientfd[idc],&flag, sizeof(int),0);
 	if( r != sizeof(flag) )
 	{
 		perror("Error reciviendo numero de registro");
 		exit(-1);
 	}
     if(flag==1){
-        r=send(clientfd,hcFile,sizeof(hcFile),0);
+        r=send(clientfd[idc],hcFile,sizeof(hcFile),0);
         if( r != sizeof(hcFile) )
 	    {
 		    perror("Error enviando reg val");
@@ -250,7 +336,7 @@ void verReg(){
 }
 
 
-void ingresarReg(){
+void ingresarReg(int idc){
     struct dogType * mascota;
 	mascota = ( struct  dogType *) malloc( sizeof ( struct dogType ) );
 	if( mascota == NULL )
@@ -258,7 +344,7 @@ void ingresarReg(){
 		perror("error en el malloc de la mascota");
 		exit( -1 );
 	}
-	int r = recv(clientfd, mascota, sizeof(struct dogType),0);
+	int r = recv(clientfd[idc], mascota, sizeof(struct dogType),0);
 	if( r != sizeof(struct dogType) )
 	{
 		perror("Error reciviendo mascota del cliente");
@@ -270,7 +356,7 @@ void ingresarReg(){
     lastestId[key] = lastPos();
     save(mascota);
     int val=1;
-    r=send(clientfd,&val,sizeof(int),0);
+    r=send(clientfd[idc],&val,sizeof(int),0);
     if( r != sizeof(val) )
 	{
 		perror("Error enviando confirmacion al cliente");
@@ -279,7 +365,7 @@ void ingresarReg(){
 
 }
 
-void buscarReg(){
+void buscarReg(int idc){
     int r;
     struct dogType* perro;//creación del perro a ingresar
     perro = (struct dogType*)malloc(sizeof(struct dogType));
@@ -289,7 +375,7 @@ void buscarReg(){
     }
     char nombre[NAME_LEN];
     memset(nombre,0,sizeof(nombre));
-    r = recv(clientfd,nombre,NAME_LEN,0);
+    r = recv(clientfd[idc],nombre,NAME_LEN,0);
     if( r != NAME_LEN )
 	{
 		perror("Error reciviendo mascota del cliente");
@@ -315,28 +401,28 @@ void buscarReg(){
 		}
 		if( equal )
 		{
-			SendConfirmation(currId+1 );
-			SendMascota( perro );	
+			SendConfirmation(currId+1,idc );
+			SendMascota( perro,idc );	
 		}
 		currId = perro -> idPrev;
 	
     }
     free(perro);
-    SendConfirmation(-1);
+    SendConfirmation(-1,idc);
 }
 
-void borrarReg(){
+void borrarReg(int idc){
     int reg,r;
 	//pasar la cantidad de registros actuales
 	int total=lastPos();
-	r = send(clientfd,&total,sizeof(total),0);
+	r = send(clientfd[idc],&total,sizeof(total),0);
     if( r != sizeof(total))
     {
         perror("Error al enviar cantidad de registros");
         exit(-1);
     }
 
-    r = recv(clientfd,&reg,sizeof(reg),0);
+    r = recv(clientfd[idc],&reg,sizeof(reg),0);
     if( r != sizeof(reg))
     {
         perror("Error al recibir el registro a eliminar");
@@ -554,14 +640,15 @@ void borrarReg(){
 	free(tmp);
 	free(tmp2);
 
-	SendConfirmation(1); 
+	SendConfirmation(1,idc); 
 }
 
-void run(){
-    int doing=1;
+void * run(void * ap){
+    int idc = *(int*)ap;
+	int doing=1;
     while(doing==1){
         int op;
-        int r = recv(clientfd, &op, sizeof(op),0);
+        int r = recv(clientfd[idc], &op, sizeof(op),0);
 	    if(r == 0)
 	    {
 		    perror("error por el connect");
@@ -571,19 +658,19 @@ void run(){
         {
             case 1:
                 printf("insertar");
-                ingresarReg();
+                ingresarReg(idc);
                 break;
             case 2:
                 printf("ver");
-                verReg();
+                verReg(idc);
                 break;
             case 3:
                 printf("borrar");
-                borrarReg();
+                borrarReg(idc);
                 break;
             case 4:
                 printf("buscar");
-                buscarReg();
+                buscarReg(idc);
                 break;
             case 5:
                 doing= 0;
@@ -597,20 +684,21 @@ void run(){
         int  check;
         points = fopen("dataPointers.dat","w+");
         if(points == NULL)
-	{
+		{	
                 perror("error generando apuntadores");
                 exit(-1);
         }
 
         check = fwrite( lastestId, HASH_SIZE * sizeof(int), 1, points );
         if( check == 0 )
-	{
-		perror("error en la escritura de apuntadores");	
-		exit( -1 );
-	}
+		{
+			perror("error en la escritura de apuntadores");	
+			exit( -1 );
+		}
 	fclose(points);
-    close(clientfd);
-    clientfd=0;
+	pthread_join(idThreat[idc],NULL);
+    close(clientfd[idc]);
+    clientfd[idc]=0;
 }
 
 
@@ -642,7 +730,6 @@ int main(){
 
 //-----------------------------------------------------------------------------------------------
     int serverfd;
-    struct sockaddr_in server,client;
     socklen_t len;
 
     serverfd = socket(AF_INET,SOCK_STREAM,0);
@@ -664,12 +751,24 @@ int main(){
     if(r==-1){
         perror("error al escuchar el tipo de socket");
     }
-    clientfd = accept(serverfd,(struct sockaddr *)&client,&len);
-    if(clientfd==-1){
-        perror("error al esperar al cliente");
-    }
-    run();
-    close(clientfd);
+	for( int i = 0; i < MAX_CLIENTS; ++ i ){
+		arg[i] = i;
+	}
+	while (1)
+	{
+		int idx=0;
+		socklen_t tamaClient = 0;
+		clientfd[idx] = accept(serverfd,(struct sockaddr *)&client[idx],&tamaClient);
+    	if(clientfd[idx]==-1){
+        	perror("error al esperar al cliente");
+    	}
+		pthread_create(&(idThreat[idx]), NULL, run, (void*)&arg[idx]);
+		if(idx == MAX_CLIENTS){
+			break;
+		}
+		++idx;
+	}
+		
     close(serverfd);
     return 0;
 }
