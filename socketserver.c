@@ -432,7 +432,7 @@ void buscarReg(int idc){
 		}
 		if( equal )
 		{
-			SendConfirmation(currId+1,idc );
+			SendConfirmation(currId,idc );
 			SendMascota( perro,idc );	
 		}
 		currId = perro -> idPrev;
